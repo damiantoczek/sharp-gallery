@@ -2,7 +2,11 @@
   "name": "nodejs-gallery",
   "version": "1.0.0",
   "description": "",
-  "main": "src/gallery.mjs",
+  "main": "index.mjs",
+  "files":[
+    "index.mjs",
+    "package.json"
+  ],
   "dependencies": {
     "sharp": "^0.26.2"
   },
