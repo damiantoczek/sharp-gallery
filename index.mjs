@@ -5,47 +5,60 @@ import sharp from "sharp"
 class Gallery{
   constructor(config){
     this.config = config
-    this.tree = {}
+    this.folders = {} // Raw folders "./myFolder/animals": ["cat.jpg", "dog.jpg"]
+    this.tree = {} // Prepared deep folder structure with suffixes
 
-    this.loadFolder()
+    /*
+    tree = {
+      "./myFolder":{
+        "/animals":[
+          "cat.jpg",
+          "dog.jpg"
+        ]
+      }
+    }
+    */
+    this.images = [] // Full image paths for sharp
+
+    if(config.auto){
+      this.buildTree()
+    }
   }
 
-  loadFolder(){
+  buildTree(){
     const {root, suffix, extensions} = this.config
-    const rootFolder = readdirSync(root)
+    let rootFolder = readdirSync(root)
 
     // Sort folders
     // key(folder):array(filenames)
     // {"myFolder": ["cat.jpg","dog.jpg","mouse.png"]}
     let folders = {}
-    const addToFolders = function(folder, filename){
-      if(folders[folder] === undefined){
+    let images = [] // Stores all full image paths to be used with sharp when .createImages is called.
+    const addToFolders = (folder, filename) => {
+      if(!folders[folder])
         folders[folder] = [filename]
-      }
-      else{
+      else
         folders[folder].push(filename)
-      }
+
+      images.push(folder + filename)
     }
 
-    const readFolder = function(rootPath, filesArray){
-      for(let value of filesArray){
-        if(extname(value) === ""){
-          let newFilenames = readdirSync(rootPath + value)
-          let newRootPath = rootPath + value + "/"
+    const readFolder = (rootPath, filesArray) => {
+      for(let filename of filesArray){
+        if(extname(filename) === ""){
+          let newFilenames = readdirSync(rootPath + filename)
+          let newRootPath = rootPath + filename + "/"
           readFolder(newRootPath, newFilenames)
         }
-        else{
-          // Before adding the filename to the folders object,
-          // check if the extension name matches
-          let ext = extname(value).toLowerCase()
-          if(extensions.indexOf(ext) === 0){
-            addToFolders(rootPath, value)
-          }
+        else if(this.hasValidExt(filename)){
+          addToFolders(rootPath, filename)
         }
       }
     }
 
     readFolder(root, rootFolder)
+    this.folders = folders
+    this.images = images
 
     /*
     Create a tree like this
@@ -60,59 +73,65 @@ class Gallery{
     */
 
     let tree = {}
-
-    const addToTree = function(folder, filename){
-      let pattern = `\.(${suffix.join("|")})\.`
-      let regexp = RegExp(pattern, "i")
-      let matches = filename.match(regexp)
-      if(matches === null){
-        let imgObj = {
-          src: folder + filename,
-          tags: folder.replace(root, "").split("/").filter(val => val !== "")
-        }
-
-        const addSuffix = (value, filename) => {
-          let filenameExt = extname(filename)
-          let newFilename = filename.replace(filenameExt, "." + value + filenameExt)
-          return newFilename
-        }
-
-        // Create suffix paths from the root filename
-        for(let newSuffix of suffix){
-          imgObj[newSuffix] = folder + addSuffix(newSuffix, filename)
-        }
-
-        // Set object
-        tree[folder][filename] = imgObj
+    const addToTree = (folder, filename) => {
+      /* Create image objects like:
+      {
+        src:"./gallery/dogs/husky.jpg",
+        thumbnail:"./gallery/dogs/husky.min.jpg"
       }
+      */
+      let imgObj = {
+        src: folder + filename,
+        tags: folder.replace(root, "").split("/").filter(val => val !== "")
+      }
+
+      // Create suffix paths from the root filename
+      for(let newSuffix of suffix){
+        imgObj[newSuffix] = Gallery.addSuffix(newSuffix, filename)
+      }
+
+      tree[folder][filename] = imgObj
     }
 
-    for (const folder in folders) {
-      if(tree[folder] === undefined){
-        tree[folder] = {}
-      }
+    for (let folderPath in folders) {
+      if(!tree[folderPath])
+        tree[folderPath] = {}
 
-      while(folders[folder].length > 0){
-        let filename = folders[folder].pop()
-        addToTree(folder, filename)
+      while(folders[folderPath].length > 0){
+        let filename = folders[folderPath].pop()
+        if(!this.hasSuffix(filename)){
+          addToTree(folderPath, filename)
+        }
       }
     }
 
     this.tree = tree
+
+    return this
+  }
+
+  static addSuffix(value, filename){
+    let filenameExt = extname(filename)
+    let newFilename = filename.replace(filenameExt, "." + value + filenameExt)
+    return newFilename
+  }
+
+  hasValidExt(filename){
+    let extensions = this.config.extensions
+    let pattern = `\.(${extensions.join("|")})$`
+    let regexp = RegExp(pattern, "gi")
+    return regexp.test(filename)
+  }
+
+  hasSuffix(filename){
+      let suffix = this.config.suffix
+      let pattern = `\.(${suffix.join("|")})\.`
+      let regexp = RegExp(pattern, "gi")
+      return regexp.test(filename)
   }
 
   createImages(optionsArray){
     let tree = this.tree
-    let imageObjs = []
-
-    // Create an array of image objects for sharp
-    for(let folderPath in tree){
-      let folder = tree[folderPath]
-      for(let imagePath in folder){
-        let image = folder[imagePath]
-        imageObjs.push(image);
-      }
-    }
 
     // Create images
     const changeImage = async (imageBuffer,format,_quality) => {
@@ -129,24 +148,25 @@ class Gallery{
       }
     }
 
+    let dir = this.config.root
     for(let imgOptions of optionsArray){
       let {size, format, suffix, quality} = imgOptions
-      for(let imageObj of imageObjs){
-        let src = imageObj.src
-
-        sharp(src).resize(size[0], size[1]).toBuffer()
-          .then(imageBufferRef => {
-            changeImage(imageBufferRef, format, quality)
-              .then(imageBuffer => {
-                let filenameSuffix = imageObj[suffix]
-                writeFile(filenameSuffix, imageBuffer, err => {
-                  if(err) console.log(err)
-                  console.log("SAVED", filenameSuffix);
-                })
+      for(let imageSrc of this.images){
+        if(!this.hasSuffix(imageSrc)){
+          sharp(imageSrc).resize(size[0], size[1]).toBuffer().then((imageBufferRef) => {
+            changeImage(imageBufferRef, format, quality).then(imageBuffer => {
+              let newFilePath = Gallery.addSuffix(suffix, imageSrc)
+              writeFile(newFilePath, imageBuffer, err => {
+                if(err) console.trace(err)
+                console.log("SAVED", newFilePath);
               })
+            })
           })
+        }
       }
     }
+
+    return this
   }
 }
 
