@@ -7,6 +7,9 @@ class Gallery{
     this.config = config
     this.folders = {} // Raw folders "./myFolder/animals": ["cat.jpg", "dog.jpg"]
     this.tree = {} // Prepared deep folder structure with suffixes
+    this.cache = {
+      'watermark': {}
+    }
 
     /*
     tree = {
@@ -18,15 +21,11 @@ class Gallery{
       }
     }
     */
-    this.images = [] // Full image paths for sharp
+    this.imagePaths = [] // Full image paths for sharp
 
-    if(config.auto){
+    if(config.images){
       this.buildTree()
-      this.addWatermarks().then(() => {
-        if(this.config.auto instanceof Array){
-          this.createImages()
-        }
-      })
+      this.createImages(this.config.images)
     }
   }
 
@@ -65,7 +64,7 @@ class Gallery{
     this.folders = folders
     // Filter image sources with suffixes, im putting this now here
     // Because I used this filter about 3 times in multiple methods.
-    this.images = images.filter(src => !this.hasSuffix(src) && !this.hasSuffix(src, ["watermark"]))
+    this.imagePaths = images.filter(src => !this.hasSuffix(src) && !this.hasSuffix(src, ["watermark"]))
 
     /*
     Create a tree like this
@@ -137,56 +136,98 @@ class Gallery{
       return regexp.test(filename)
   }
 
-  async addWatermarks(){
+  async loadWatermarks(width, height, axis){
+    let imageOptions = this.config.images
     let watermarks = this.config.watermarks
-    let images = this.images
 
     return Promise.all(
-      images.map(async (imageSrc) => {
-        let newImageSrc = Gallery.addSuffix("watermark", imageSrc)
-        let imageBuffer = await sharp(imageSrc).rotate().composite(watermarks).toFile(newImageSrc)
+      imageOptions.map(async ({size, suffix}) => {
+        /* TODO: Now it is only able to load and cache one single watermark
+          this.cache.watermark = {
+            "suffixA": watermarkBufferA,
+            "suffixB": watermarkBufferB,
+            "suffixC": watermarkBufferC
+          }
+        */
+        let watermarkBuffer = await sharp(watermarks[0].input)
+        let meta = await watermarkBuffer.metadata()
+
+        // Calculate the new size for the watermark
+        // sizeDif is the difference between image and watermark
+        let sizeDif = axis === "width"? (size[0] / width) : (size[1] / height)
+        let newWidth = Math.round(meta.width * sizeDif)
+        let newHeight = Math.round(meta.height * sizeDif)
+
+        let watermarkOptions = {fit:"inside"}
+        let resizedWatermark = await watermarkBuffer.resize(newWidth, newHeight, watermarkOptions).toBuffer()
+        this.cache.watermark[suffix] = resizedWatermark
       })
     ).then(() => {
-      console.log(`${images.length} images with watermarks saved.`);
+      console.log(`Watermarks created.`);
     })
   }
 
+  async createImages(options){
+    if(!this.config.images) this.config.images = options
+    let imagePaths = this.imagePaths
+    let watermarks = this.config.watermarks
 
-  async changeImage(imageBuffer,format,_quality){
-    let quality = _quality || 100
-    switch (format) {
-      case "jpg":
-        return await sharp(imageBuffer).jpeg({quality}).toBuffer()
-      case "jpeg":
-        return await sharp(imageBuffer).jpeg({quality}).toBuffer()
-      case "png":
-        return await sharp(imageBuffer).png({quality}).toBuffer()
-      default:
-        return await sharp(imageBuffer).jpeg({quality}).toBuffer()
+    if(watermarks){
+      await this.loadWatermarks(6480, 4320)
     }
-  }
 
-  createImages(imageOptions){
-    let images = this.images
+    // Loops through all imagePaths
+    Promise.all(
+      imagePaths.map(async (imageSrc) => {
+        let imageBufferRef = await sharp(imageSrc)
+        let {width,height} = await imageBufferRef.metadata()
 
-    let options = imageOptions || this.config.auto
-    for(let imgOptions of options){
-      let {size, format, suffix, quality} = imgOptions
-      Promise.all(
-        images.map(async (src) => {
-          let imageSrc = this.config.watermarks ? Gallery.addSuffix("watermark", src) : src
-          let imageBuffer = await sharp(imageSrc).resize(size[0], size[1]).toBuffer()
-          imageBuffer = await this.changeImage(imageBuffer)
-          let newImageSrc = Gallery.addSuffix(suffix, src)
-          // console.log(newImageSrc);
-          writeFile(newImageSrc, imageBuffer, err => {
-            if(err) console.trace(err)
+        // Possible to do it for each image individually but this will const so much performance
+        // if(watermarks){
+        //   this.loadWatermarks(width, height)
+        // }
+
+        // Loops through all image options config.images
+        return Promise.all(
+          options.map(async ({size,suffix,format,quality}) => {
+            let newImageSrc = Gallery.addSuffix(suffix, imageSrc)
+
+            await imageBufferRef.resize(size[0],size[1]).toBuffer()
+            // Adds watermark if defined in config.watermark
+            // If config.watermark is defined this.config.watermark will have a imageBuffer
+              .then(async (buffer) => {
+                if(this.cache.watermark[suffix] !== undefined){
+                  let watermarkBuffer = this.cache.watermark[suffix]
+                  return await sharp(buffer).composite([{input: watermarkBuffer, gravity: watermarks[0].gravity}]).toBuffer()
+                }
+              })
+            // Check what file format it is and save it to file.
+              .then(async (buffer) => {
+                quality = quality || 100
+                switch (format) {
+                  case "jpg":
+                    await sharp(buffer).jpeg({quality}).toFile(newImageSrc)
+                  case "jpeg":
+                    await sharp(buffer).jpeg({quality}).toFile(newImageSrc)
+                  case "png":
+                    await sharp(buffer).png({quality}).toFile(newImageSrc)
+                  default:
+                    await sharp(buffer).jpeg({quality}).toFile(newImageSrc)
+                }
+              })
           })
-        })
-      ).then(() => {
-        console.log(`${images.length} images with "${suffix}" suffix saved.`);
+        )
+
+
+        // let newImageSrc = Gallery.addSuffix(suffix, src)
+        // // console.log(newImageSrc);
+        // writeFile(newImageSrc, imageBuffer, err => {
+        //   if(err) console.trace(err)
+        // })
       })
-    }
+    ).then(() => {
+      console.log(`${options.length * imagePaths.length} images saved.`);
+    })
 
     return this
   }
