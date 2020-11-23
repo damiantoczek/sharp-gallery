@@ -1,6 +1,6 @@
 {
-  "name": "nodejs-gallery",
-  "version": "1.0.2",
+  "name": "sharp-gallery",
+  "version": "0.0.0",
   "description": "",
   "main": "index.mjs",
   "files": [
@@ -10,9 +10,6 @@
   "dependencies": {
     "sharp": "^0.26.2"
   },
-  "scripts": {
-    "start": "node ./index.mjs"
-  },
-  "author": "",
-  "license": "MIT"
+  "author": "Damian Toczek",
+  "license": "GPL"
 }
