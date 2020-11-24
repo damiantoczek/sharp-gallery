@@ -182,7 +182,7 @@ class Gallery{
     // Loops through all imagePaths
     return Promise.all(
       imagePaths.map(async (imageSrc) => {
-        let imageBufferRef = await sharp(imageSrc)
+        let imageBufferRef = await sharp(imageSrc).rotate()
         let {width,height} = await imageBufferRef.metadata()
 
         // Possible to do it for each image individually but this will const so much performance
