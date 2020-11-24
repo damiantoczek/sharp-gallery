@@ -177,7 +177,7 @@ class Gallery{
     }
 
     // Loops through all imagePaths
-    Promise.all(
+    return Promise.all(
       imagePaths.map(async (imageSrc) => {
         let imageBufferRef = await sharp(imageSrc)
         let {width,height} = await imageBufferRef.metadata()
@@ -190,7 +190,7 @@ class Gallery{
         // Loops through all image options config.images
         return Promise.all(
           options.map(async ({size,suffix,format,quality}) => {
-            let newImageSrc = Gallery.addSuffix(suffix, imageSrc)
+            let newImageSrc = Gallery.addSuffix(suffix, imageSrc.replaceAll(/\s+/g, "_"))
 
             await imageBufferRef.resize(size[0],size[1]).toBuffer()
             // Adds watermark if defined in config.watermark
@@ -200,6 +200,8 @@ class Gallery{
                   let watermarkBuffer = this.cache.watermark[suffix]
                   return await sharp(buffer).composite([{input: watermarkBuffer, gravity: watermarks[0].gravity}]).toBuffer()
                 }
+
+                return buffer
               })
             // Check what file format it is and save it to file.
               .then(async (buffer) => {
@@ -228,8 +230,6 @@ class Gallery{
     ).then(() => {
       console.log(`${options.length * imagePaths.length} images saved.`);
     })
-
-    return this
   }
 }
 

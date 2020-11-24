@@ -1,15 +1,23 @@
 {
   "name": "sharp-gallery",
-  "version": "0.0.0",
-  "description": "",
+  "version": "0.0.1",
+  "license": "GPL-3.0",
+  "description": "Gallery that fetches folders, resizes images and adds watermarks.",
+  "keywords": ["gallery","sharp","image","resize","watermark"],
+  "homepage": "https://github.com/damiantoczek/sharp-gallery",
+  "bugs": {
+    "url": "https://github.com/damiantoczek/sharp-gallery/issues"
+  },
+  "repository": {
+    "git": "https://github.com/damiantoczek/sharp-gallery"
+  },
+  "author": "Damian Toczek",
   "main": "index.mjs",
   "files": [
     "index.mjs",
     "package.json"
   ],
   "dependencies": {
-    "sharp": "^0.26.2"
+    "sharp": "^0.26.3"
   },
-  "author": "Damian Toczek",
-  "license": "GPL"
 }
