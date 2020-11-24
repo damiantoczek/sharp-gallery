@@ -86,17 +86,19 @@ class Gallery{
         thumbnail:"./gallery/dogs/husky.min.jpg"
       }
       */
+      let newFilename = filename.replaceAll(/\s+/g, "_")
       let imgObj = {
-        src: folder + filename,
+        src: folder + newFilename,
+        _src: folder + filename,
         tags: folder.replace(root, "").split("/").filter(val => val !== "")
       }
 
       // Create suffix paths from the root filename
       for(let newSuffix of suffix){
-        imgObj[newSuffix] = Gallery.addSuffix(newSuffix, filename)
+        imgObj[newSuffix] = Gallery.addSuffix(newSuffix, newFilename)
       }
 
-      tree[folder][filename] = imgObj
+      tree[folder][newFilename] = imgObj
     }
 
     for (let folderPath in folders) {
@@ -104,14 +106,15 @@ class Gallery{
         tree[folderPath] = {}
 
       while(folders[folderPath].length > 0){
-        let filename = folders[folderPath].pop()
-        if(!this.hasSuffix(filename)){
-          addToTree(folderPath, filename)
+        let newFilename = folders[folderPath].pop()
+        if(!this.hasSuffix(newFilename)){
+          addToTree(folderPath, newFilename)
         }
       }
     }
 
     this.tree = tree
+    console.log(tree);
 
     return this
   }
